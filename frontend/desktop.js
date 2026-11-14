@@ -518,26 +518,56 @@
   });
 
   document.getElementById("saveBtn").addEventListener("click", function () { saveCurrent(); });
-  document.getElementById("exportPngBtn").addEventListener("click", function () {
-    var name = currentName();
-    var sdk = frame.contentWindow && frame.contentWindow.SketchbookSDK;
-    var bridge = sdk && (typeof sdk.getBridge === "function" ? sdk.getBridge() : null);
-    if (bridge && typeof bridge.execute === "function") {
-      bridge.execute("export", { format: "png", name: name }).then(function () { toast("Exportando PNG..."); }).catch(function () { toast("Error al exportar"); });
-    } else if (sdk && typeof sdk.exportPNG === "function") {
-      sdk.exportPNG().then(function () { toast("Exportando PNG..."); }).catch(function () { toast("Error al exportar"); });
+
+  function getEngineBridge() {
+    var w = frame.contentWindow;
+    if (w && w.SketchbookBridge && typeof w.SketchbookBridge.execute === "function") return w.SketchbookBridge;
+    var sdk = w && w.SketchbookSDK;
+    if (sdk && typeof sdk.getBridge === "function") {
+      var b = sdk.getBridge();
+      if (b && typeof b.execute === "function") return b;
     }
-  });
-  document.getElementById("exportGlbBtn").addEventListener("click", function () {
+    return null;
+  }
+
+  function b64ToBlob(data, mime) {
+    var bin = atob(data);
+    var arr = new Uint8Array(bin.length);
+    for (var i = 0; i < bin.length; i++) arr[i] = bin.charCodeAt(i);
+    return new Blob([arr], { type: mime || "application/octet-stream" });
+  }
+
+  function doExport(fmt, label) {
+    var bridge = getEngineBridge();
+    if (!bridge) { toast("Motor no disponible"); return; }
     var name = currentName();
-    var sdk = frame.contentWindow && frame.contentWindow.SketchbookSDK;
-    var bridge = sdk && (typeof sdk.getBridge === "function" ? sdk.getBridge() : null);
-    if (bridge && typeof bridge.execute === "function") {
-      bridge.execute("export", { format: "glb", name: name }).then(function () { toast("Exportando GLB..."); }).catch(function () { toast("Error al exportar"); });
-    } else if (sdk && typeof sdk.exportGLB === "function") {
-      sdk.exportGLB(name).then(function () { toast("Exportando GLB..."); }).catch(function () { toast("Error al exportar"); });
-    }
-  });
+    toast("Exportando " + label + "...");
+    bridge.execute("export", { format: fmt, name: name }).then(function (res) {
+      var r = res && res.result ? res.result : res;
+      var data = r && r.data;
+      if (!data) { toast("Nada que exportar"); return; }
+      var ext = (r && r.ext) || fmt;
+      var fname = (name || "sketch") + "." + ext;
+      if (TAURI) {
+        TAURI.invoke("save_export", { name: fname, b64: data }).then(function (path) {
+          toast("Exportado: " + String(path).split(/[\\/]/).pop());
+        }).catch(function (e) { console.error("save_export", e); toast("Error al guardar"); });
+      } else {
+        // Fallback navegador (dev): descarga directa
+        try {
+          var url = URL.createObjectURL(b64ToBlob(data, r && r.mime));
+          var a = document.createElement("a"); a.href = url; a.download = fname; a.click();
+          URL.revokeObjectURL(url);
+          toast("Exportado " + label);
+        } catch (e) { console.error("export dl", e); toast("Error al exportar"); }
+      }
+    }).catch(function (e) { console.error("export", fmt, e); toast("Error al exportar"); });
+  }
+
+  document.getElementById("exportPngBtn").addEventListener("click", function () { doExport("png", "PNG"); });
+  document.getElementById("exportGlbBtn").addEventListener("click", function () { doExport("glb", "GLB"); });
+  document.getElementById("exportObjBtn").addEventListener("click", function () { doExport("obj", "OBJ"); });
+  document.getElementById("exportUsdBtn").addEventListener("click", function () { doExport("usdz", "USDZ"); });
 
   function currentName() {
     var p = projects.find(function (x) { return x.id === currentId; });
