@@ -29,25 +29,23 @@ jobs:
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
         with:
-          targets: aarch64-linux-android,x86_64-linux-android
+          targets: aarch64-linux-android,armv7-linux-androideabi,x86_64-linux-android
 
       - name: Setup Android SDK
-        uses: android-actions/setup-android@v3
-        with:
-          ndk-version: '26.1.10909125'
+        run: |
+          yes | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --licenses || true
+          $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager "platform-tools" "platforms;android-34" "build-tools;34.0.0" "ndk;26.1.10909125"
 
       - name: Install dependencies
         run: npm ci
-
-      - name: Build frontend
-        run: npm run build:frontend
 
       - name: Build Android APK (debug)
         run: |
           export ANDROID_HOME=$ANDROID_SDK_ROOT
           export NDK_HOME=$ANDROID_SDK_ROOT/ndk/26.1.10909125
           npx tauri android init
-          npx tauri android build --debug --apk --target x86_64
+          npm run build:frontend
+          npx tauri android build --debug --apk
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
